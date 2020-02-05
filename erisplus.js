@@ -162,6 +162,32 @@ function init(Eris) {
         }
     });
 
+    /**
+     * The member's tag (<@userid>)
+     *
+     * @memberOf external:Member#
+     * @member {String} tag
+     */
+    Object.defineProperty(Eris.Member.prototype, "tag", {
+        get: function() {
+            var member = this;
+            return member.user.tag;
+        }
+    });
+
+    /**
+     * The user's tag (<@userid>)
+     *
+     * @memberOf external:User#
+     * @member {String} tag
+     */
+    Object.defineProperty(Eris.User.prototype, "tag", {
+        get: function() {
+            var user = this;
+            return `<@${user.id}>`;
+        }
+    });
+
     return Eris;
 }
 

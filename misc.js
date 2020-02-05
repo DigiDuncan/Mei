@@ -39,22 +39,14 @@ function chooseMember(members) {
     return member && member.id;
 }
 
-// Find the id of a mentioned user
-function getMentionedId(m, args) {
-    var mentionedId = m.mentions[0] && m.mentions[0].id;
-    if (mentionedId) {
-        return mentionedId;
+// Find the member/user of a mentioned user
+// This won't work if a user has a space in their name
+function getMentioned(m, argparts) {
+    var mentioned = m.mentions[0];
+    if (!mentioned) {
+        mentioned = m.guild.members.find(m => argparts.includes(m.username) || argparts.includes(m.nick));
     }
-
-    var member = m.guild.members.find(function(mbr) {
-        return new RegExp("\\b" + escapeStringRegexp(mbr.username) + "\\b", "i").test(args)
-            || (mbr.nick && new RegExp("\\b" + escapeStringRegexp(mbr.nick) + "\\b", "i").test(args));
-    });
-    if (member) {
-        return member.id;
-    }
-
-    return undefined;
+    return mentioned;
 }
 
 function isObject(value) {
@@ -115,13 +107,26 @@ function deleteIn(timeout) {
     };
 }
 
+// Create a map of aliases to objects
+function AliasMap(items) {
+    var aliasMap = {};
+
+    for (let item of items) {
+        for (let alias of item.aliases) {
+            aliasMap[alias] = item;
+        }
+    }
+
+    return aliasMap;
+}
+
 module.exports = {
     choose,
     chooseHand,
     chunkArray,
     capitalize,
     chooseMember,
-    getMentionedId,
+    getMentioned,
     isObject,
     isString,
     isNum,
@@ -130,5 +135,6 @@ module.exports = {
     timestampToSnowflake,
     splitArray,
     delay,
-    deleteIn
+    deleteIn,
+    AliasMap
 };

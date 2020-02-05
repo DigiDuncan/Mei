@@ -1,147 +1,157 @@
 "use strict";
 
-const path = require("path");
-const fs = require("fs").promises;
-
-const Perf = require("pixl-perf");
 const ordinal = require("ordinal");
 const escapeStringRegexp = require("escape-string-regexp");
 
-const { choose, capitalize, chunkArray, chooseMember, getMentionedId } = require("./misc");
+const { choose, capitalize, chunkArray, chooseMember, getMentioned, AliasMap } = require("./misc");
+const lewdsdb = require("./lewds");
 const datadb = require("./data");
 const peopledb = require("./people");
 const ids = require("./ids");
 
-var perf = new Perf();
-
-// Subtype Aliases
-function getSubtypeAliasMap() {
-    // TODO: convert this to json when have time
-    var subtypeAliasTree = {
-        "boob": ["boob", "boobs", "tit", "tits", "breast", "breasts"],
-        "butt": ["butt", "bum", "bums", "butts", "ass"],
-        "vagina": ["vagina", "pussy", "insertion", "cunt", "cunny"],
-        "foot": ["foot", "foote", "feet"],
-        "panty": ["panty", "panties", "pantie", "underwear", "thong", "thongs"],
-        "vore": ["vore", "mouth"],
-        "hand": ["hand", "hands"],
-        "leg": ["leg", "legs", "thighs", "thigh"],
-        "proposal": ["proposal", "mary", "wed", "marriage"],
-        "cloth": ["cloth", "panties", "panty", "clothes", "clothing", "bra", "pants", "panty", "panties", "pantie", "underwear", "thong", "thongs"],
-        "toy": ["toy", "dildo", "beads", "object", "plug"],
-        "misc": ["misc", "alt", "other"]
-    };
-
-    var subtypeAliasMap = {};
-    Object.keys(subtypeAliasTree).forEach(function(subtype) {
-        subtypeAliasMap[subtype] = subtype;
-        subtypeAliasTree[subtype].forEach(function(alias) {
-            subtypeAliasMap[alias] = subtype;
-        });
-    });
-
-    return subtypeAliasMap;
-}
-
-function getSubtype(s) {
-    var tracker_getSubtypeAliasMap = perf.begin("getSubtypeAliasMap");
-    perf.count("getSubtypeAliasMap");
-    var subtypeAliasMap = getSubtypeAliasMap();
-    tracker_getSubtypeAliasMap.end();
-    var subtypeEmojis = {
-        "boob": ":melon:",
-        "butt": ":peach:",
-        "vagina": ":sweat_drops:",
-        "foot": ":footprints:",
-        "panty": ":bikini:",
-        "vore": ":lips:",
-        "hand": ":raised_back_of_hand:",
-        "leg": ":dancer:",
-        "proposal": ":ring:",
-        "cloth": ":shirt:",
-        "toy": ":battery:",
-        "misc": ":question:",
-        "Random": ":question:"
-    };
-
-    var foundAlias = Object.keys(subtypeAliasMap).find(function(alias) {
-        return s.match(new RegExp("\\b" + escapeStringRegexp(alias) + "\\b", "i"));
-    });
-
-    var subtype = subtypeAliasMap[foundAlias] || "Random";
-    var emoji = subtypeEmojis[subtype];
-
-    return { subtype, emoji };
-}
-
-// Giantess names
-async function getAllGTSNames(uid, guildid) {
-    var tracker_getCustomGTSNames = perf.begin("getCustomGTSNames");
-    perf.count("getCustomGTSNames");
-    var customNames = await getCustomGTSNames(uid);
-    tracker_getCustomGTSNames.end();
-
-    var tracker_getDefaultGTSNames = perf.begin("getDefaultGTSNames");
-    perf.count("getDefaultGTSNames");
-    var defaultNames = getDefaultGTSNames(guildid);
-    tracker_getDefaultGTSNames.end();
-
-    var allNames = customNames.concat(defaultNames);
-    return allNames;
-}
-
-async function getGTSNames(uid, guildid) {
-    var tracker_getCustomGTSNames = perf.begin("getCustomGTSNames");
-    perf.count("getCustomGTSNames");
-    var names = await getCustomGTSNames(uid);
-    tracker_getCustomGTSNames.end();
-
-    if (names.length === 0) {
-        var tracker_getDefaultGTSNames = perf.begin("getDefaultGTSNames");
-        perf.count("getDefaultGTSNames");
-        names = getDefaultGTSNames(guildid);
-        tracker_getDefaultGTSNames.end();
+// Map of subtype aliases to subtypes
+// TODO: convert to json file
+var subtypeAliasMap = AliasMap([
+    {
+        name: "boob",
+        aliases: ["boobs", "tit", "tits", "breast", "breasts"],
+        emoji: ":melon:"
+    },
+    {
+        name: "butt",
+        aliases: ["bum", "bums", "butts", "ass"],
+        emoji: ":peach:"
+    },
+    {
+        name: "vagina",
+        aliases: ["pussy", "insertion", "cunt", "cunny"],
+        emoji: ":sweat_drops:"
+    },
+    {
+        name: "foot",
+        aliases: ["foote", "feet"],
+        emoji: ":footprints:"
+    },
+    {
+        name: "panty",
+        aliases: ["panties", "pantie", "underwear", "thong", "thongs"],
+        emoji: ":bikini:"
+    },
+    {
+        name: "vore",
+        aliases: ["mouth"],
+        emoji: ":lips:"
+    },
+    {
+        name: "hand",
+        aliases: ["hands"],
+        emoji: ":raised_back_of_hand:"
+    },
+    {
+        name: "leg",
+        aliases: ["legs", "thighs", "thigh"],
+        emoji: ":dancer:"
+    },
+    {
+        name: "proposal",
+        aliases: ["mary", "wed", "marriage"],
+        emoji: ":ring:"
+    },
+    {
+        name: "cloth",
+        aliases: ["clothes", "clothing", "bra", "pants"],
+        emoji: ":shirt:"
+    },
+    {
+        name: "toy",
+        aliases: ["dildo", "beads", "object", "plug"],
+        emoji: ":battery:"
+    },
+    {
+        name: "misc",
+        aliases: ["alt", "other"],
+        emoji: ":question:"
+    },
+    {
+        name: "Random",
+        aliases: [],
+        emoji: ":question:"
     }
+]);
 
-    return names;
+// Guild specific character names
+// TODO: convert to json file
+var defaultCharacterNames = ["Mei", "Sucy", "2B", "Mt. Lady", "Vena", "Miku", "Lexi", "Baiken", "Ryuko", "Sombra", "Wolfer", "Gwen", "Mercy", "Gwynevere", "Tracer", "Aqua", "Megumin", "Cortana", "Yuna", "Lulu", "Rikku", "Rosalina", "Samus", "Princess Peach", "Palutena", "Shin", "Kimmy", "Zoey", "Camilla", "Lillian", "Narumi", "D.va"];
+var guildCharacterNames = {
+    // Krumbly's ant farm only
+    [ids.guilds.krumblysantfarm]: ["Mei", "Sucy", "2B", "Mt. Lady", "Rika", "Miku", "Lexi", "Lucy", "Ryuko", "Krumbly"],
+    // r/Macrophilia Only
+    [ids.guilds.r_macrophilia]: ["Miau"],
+    // Giantess Archive
+    [ids.guilds.giantessarchive]: ["Brittany", "Bethany", "Alicia", "Katie", "Cali", "Asuna", "Cat", "Brianna", "Emily", "Alice", "Yuri", "Monica", "Brie", "Sierra"],
+    // The Big House Only
+    [ids.guilds.bighouse]: defaultCharacterNames.concat(["Zem", "Ardy", "Vas"]),
+    // Small World Only
+    [ids.guilds.smallworld]: defaultCharacterNames.concat([{name: "Docop", gender: "male"}, "Mikki", "Spellgirl"]),
+    // The Giantess Club Only
+    [ids.guilds.giantessclub]: ["Yami", "Mikan", "Momo", "Nana", "Yui", "May", "Dawn", "Hilda", "Rosa", "Serena", "Palutena", "Wii Fit Trainer", "Lucina", "Robin", "Corrin", "Bayonetta", "Zelda", "Sheik", "Tifa", "Chun-li", "R. Mika", "Daisy", "Misty", "Gardevoir", "Lyn", "Cammy", "Angewomon", "Liara", "Samara", "Tali", "Miranda", "Cus", "Marcarita", "Vados", "Wendy", "Sabrina", "Cana", "Erza", "Levy", "Lucy", "Wendy Marvell"]
+};
+
+// Pool of lewd stories
+var storyPool = {};
+
+function getSubtype(subtypeName) {
+    var subtype = subtypeAliasMap[subtypeName.toLowerCase()] || subtypeAliasMap.Random;
+    return subtype;
 }
 
-function getDefaultGTSNames(guildid) {
-    var defaultNames = ["Mei", "Sucy", "2B", "Mt. Lady", "Vena", "Miku", "Lexi", "Baiken", "Ryuko", "Sombra", "Wolfer", "Gwen", "Mercy", "Gwynevere", "Tracer", "Aqua", "Megumin", "Cortana", "Yuna", "Lulu", "Rikku", "Rosalina", "Samus", "Princess Peach", "Palutena", "Shin", "Kimmy", "Zoey", "Camilla", "Lillian", "Narumi", "D.va"];
-    var guildNames = {
-        // Krumbly's ant farm only
-        [ids.guilds.krumblysantfarm]: ["Mei", "Sucy", "2B", "Mt. Lady", "Rika", "Miku", "Lexi", "Lucy", "Ryuko", "Krumbly"],
-        // r/Macrophilia Only
-        [ids.guilds.r_macrophilia]: ["Miau"],
-        // Giantess Archive
-        [ids.guilds.giantessarchive]: ["Brittany", "Bethany", "Alicia", "Katie", "Cali", "Asuna", "Cat", "Brianna", "Emily", "Alice", "Yuri", "Monica", "Brie", "Sierra"],
-        // The Big House Only
-        [ids.guilds.bighouse]: defaultNames.concat(["Zem", "Ardy", "Vas"]),
-        // Small World Only
-        [ids.guilds.smallworld]: defaultNames.concat(["Docop", "Mikki", "Spellgirl"]),
-        // The Giantess Club Only
-        [ids.guilds.giantessclub]: ["Yami", "Mikan", "Momo", "Nana", "Yui", "May", "Dawn", "Hilda", "Rosa", "Serena", "Palutena", "Wii Fit Trainer", "Lucina", "Robin", "Corrin", "Bayonetta", "Zelda", "Sheik", "Tifa", "Chun-li", "R. Mika", "Daisy", "Misty", "Gardevoir", "Lyn", "Cammy", "Angewomon", "Liara", "Samara", "Tali", "Miranda", "Cus", "Marcarita", "Vados", "Wendy", "Sabrina", "Cana", "Erza", "Levy", "Lucy", "Wendy Marvell"]
-    };
-
-    var names = guildNames[guildid] || defaultNames;
-
-    return names;
+// Characters
+function getAllCharacters(userdata, guildid) {
+    var userCharacters = getUserCharacters(userdata);
+    var guildCharacters = getGuildCharacters(guildid);
+    var allCharacters = userCharacters.concat(guildCharacters);
+    return allCharacters;
 }
 
-async function getCustomGTSNames(uid) {
-    var data = await peopledb.load();
-    // TODO: This doesn't load data? It won't actually have updated user data.
-    return data.people[uid]
-        && data.people[uid].names
-        && Object.keys(data.people[uid].names) || [];
+function getCharacters(userdata, guildid) {
+    var characters = getUserCharacters(userdata);
+    if (characters.length === 0) {
+        characters = getGuildCharacters(guildid);
+    }
+    return characters;
 }
 
-async function getNamesSummary(uid, guildid, perLine) {
-    var tracker_getGTSNames = perf.begin("getGTSNames");
-    perf.count("getGTSNames");
-    var names = await getGTSNames(uid, guildid);
-    tracker_getGTSNames.end();
+function getGuildCharacters(guildid) {
+    var characters = guildCharacterNames[guildid] || defaultCharacterNames;
+    characters = characters.map(function(character) {
+        // Convert character names into character objects
+        if (typeof character === "string") {
+            character = {
+                name: character,
+                gender: "female"
+            };
+        }
+        return character;
+    });
+    return characters;
+}
 
+function getUserCharacters(userdata) {
+    var userCharacterNames = userdata && userdata.names && Object.keys(userdata.names) || [];
+    var userCharacters = userCharacterNames.map(function([name]) {
+        return {
+            name: name,
+            gender: userdata.names[name]
+        };
+    });
+    return userCharacters;
+}
+
+// Summary of available character names
+function getNamesSummary(userdata, guildid, perLine) {
+    var characters = getCharacters(userdata, guildid);
+
+    var names = characters.map(c => c.name);
     if (perLine === undefined) {
         perLine = 4;
     }
@@ -149,13 +159,13 @@ async function getNamesSummary(uid, guildid, perLine) {
     // Group names in groups of [perLine] per line
     var namesString = chunkArray(names, perLine).map(function(chunk) {
         return chunk.join(", ");
-    }).join(", \n");
+    }).join(",\n");
 
-    return "**Names available: **" + names.length + "\n " + namesString;
+    return "**Names available: **" + characters.length + "\n" + namesString;
 }
 
-// Lewd Summary
-async function getLewdCountsSummary(type) {
+// Summary of lewds
+function getLewdCountsSummary(type) {
     var friendlyTypes = {
         "violent": "Smushes",
         "tf": "TF's",
@@ -163,14 +173,9 @@ async function getLewdCountsSummary(type) {
     };
     var friendlyType = friendlyTypes[type];
 
-    var tracker_loadLewdPool = perf.begin("loadLewdPool");
-    perf.count("loadLewdPool");
-    var pool = await loadLewdPool();
-    tracker_loadLewdPool.end();
-
     var total = 0;
     var lines = [];
-    var typepool = pool[type];
+    var typepool = storyPool[type];
     Object.keys(typepool).forEach(function(subtype) {
         var subtypepool = typepool[subtype];
         var count = subtypepool.length;
@@ -183,41 +188,21 @@ async function getLewdCountsSummary(type) {
     return output;
 }
 
-async function getLewdSummary(uid, guildid, type) {
-    var tracker_getNamesSummary = perf.begin("getNamesSummary");
-    perf.count("getNamesSummary");
-    var namesSummary = await getNamesSummary(uid, guildid);
-    tracker_getNamesSummary.end();
+function getLewdSummary(userdata, guildid, type) {
+    var namesSummary = getNamesSummary(userdata, guildid);
 
-    var tracker_getLewdCountsSummary = perf.begin("getLewdCountsSummary");
-    perf.count("getLewdCountsSummary");
-    var lewdCountsSummary = await getLewdCountsSummary(type);
-    tracker_getLewdCountsSummary.end();
+    var lewdCountsSummary = getLewdCountsSummary(type);
 
     var summaryString = namesSummary + "\n \n" + lewdCountsSummary;
     return summaryString;
 }
 
 // Generate Lewd Story
-async function loadLewdPool() {
-    var pool = JSON.parse(await fs.readFile(path.join(__dirname, "db", "lewds.json")));
-    return pool;
-}
-
-async function generateLewdMessage(smallid, bigname, guildid, type, subtype) {
-    var data = await peopledb.load();
-
+function generateStoryMessage(userdata, bigchar, guildid, type, subtype) {
     //=============get names==================
-    if (!bigname) {
-        var tracker_getGTSNames = perf.begin("getGTSNames");
-        perf.count("getGTSNames");
-        bigname = choose(await getGTSNames(smallid, guildid));
-        tracker_getGTSNames.end();
+    if (!bigchar) {
+        bigchar = choose(getCharacters(userdata, guildid));
     }
-
-    var gender = data.people[smallid] && data.people[smallid].names && data.people[smallid].names[bigname] || "female";
-
-    var smallname = `<@${smallid}>, `;
 
     //=========panty info============
 
@@ -235,8 +220,8 @@ async function generateLewdMessage(smallid, bigname, guildid, type, subtype) {
     };
 
     var side = choose(sides);
-    var type1 = choose(types1[gender]);
-    var type2 = choose(types2[gender]);
+    var type1 = choose(types1[bigchar.gender]);
+    var type2 = choose(types2[bigchar.gender]);
 
     //============feet info================
     var adjectivesFeet = ["stinky", "smelly", "sweaty", "damp", "pungent", "odorous", "sweet-scented", "huge", "powerful", "godly", "beautiful", "dirty", "filthy", "disgusting", "rancid", "giant", "massive", "moist", "sweat-soaked", "victim-covered", "soft", "lotion-scented"];
@@ -271,7 +256,7 @@ async function generateLewdMessage(smallid, bigname, guildid, type, subtype) {
     var footwearPlurals = ["shoes", "boots", "sandals", "flip flops", "sneakers", "pumps", "heels", "socks", "stockings", "nylons", "fishnets", "hose"];
     var footwearSingulars = ["shoe", "boot", "sandal", "flip flop", "sneaker", "pump", "heel", "sock", "stocking", "nylons", "fishnets", "hose"];
     var nakedFeetPlural = adjectiveFeet + choose(nakedFeetPlurals);
-    if (gender === "male") {
+    if (bigchar.gender === "male") {
         footwearPlurals = Array.from(new Set([].concat(footwearPlurals, ["shoes", "boots", "sandals", "flip flops", "sneakers", "boots", "socks"])));
         footwearSingulars = Array.from(new Set([].concat(footwearSingulars, ["shoe", "boot", "sandal", "flip flop", "sneaker", "boot", "sock"])));
     }
@@ -293,14 +278,9 @@ async function generateLewdMessage(smallid, bigname, guildid, type, subtype) {
     var feet = choose(feets);
 
     //==========select from pool
-    var tracker_loadLewdPool = perf.begin("loadLewdPool");
-    perf.count("loadLewdPool");
-    var pool = await loadLewdPool();
-    tracker_loadLewdPool.end();
-
-    var candidates = pool[type][subtype] || [];
+    var candidates = storyPool[type][subtype] || [];
     if (candidates.length === 0) {
-        Object.values(pool[type]).forEach(function(subpool) {
+        Object.values(storyPool[type]).forEach(function(subpool) {
             candidates = candidates.concat(subpool);
         });
     }
@@ -310,7 +290,7 @@ async function generateLewdMessage(smallid, bigname, guildid, type, subtype) {
     //==================perform replacements==============
 
     var replacements = {
-        "name": bigname,
+        "name": bigchar.name,
         "side": side,
         "type1": type1,
         "type2": type2,
@@ -361,8 +341,8 @@ async function generateLewdMessage(smallid, bigname, guildid, type, subtype) {
         }
     };
 
-    var toReplace = genderReplacements[gender];
-    if (gender === "futa" && (Math.floor(Math.random() * 10) !== 0)) {
+    var toReplace = genderReplacements[bigchar.gender];
+    if (bigchar.gender === "futa" && (Math.floor(Math.random() * 10) !== 0)) {
         toReplace = {};
     }
 
@@ -371,44 +351,58 @@ async function generateLewdMessage(smallid, bigname, guildid, type, subtype) {
         lewdmessage = lewdmessage.replace(re, newVal);
     });
 
-    return smallname + lewdmessage;
+    return lewdmessage;
 }
 
 async function getStory(m, args, command, type, isNSFW, responseColor) {
-    var tracker_getStory = perf.begin();
-    perf.count("getStory");
     var guildid = m.guild.id;
     var guildMembers = m.guild.members;
-    var author = m.author;
     var authorNick = m.member && m.member.nick || m.author.username;
 
     if (isNSFW && !m.channel.nsfw) {
         return "This command can only be used in NSFW channels";
     }
 
-    args = args.toLowerCase();
-    var argLength = args.includes("length");
-    var argSomeone = args.includes("someone");
-    var argInvert = args.includes("invert") || args.includes("inverse");
+    var argparts = args.toLowerCase().split(" ").filter(p => p);
 
-    var smallid;
+    // Parse out arguments
+    var argLength = false;
+    var argSomeone = false;
+    var argInvert = false;
+    argparts = argparts.filter(function(part) {
+        if (part === "length") {
+            argLength = true;
+            return false;
+        }
+        else if (part === "someone") {
+            argSomeone = true;
+            return false;
+        }
+        else if (part === "invert" || part === "inverse") {
+            argInvert = true;
+            return false;
+        }
+        return true;
+    });
+
+    var smalluser;
     if (argSomeone) {
-        smallid = chooseMember(guildMembers);
+        smalluser = chooseMember(guildMembers);
     }
     else {
-        smallid = getMentionedId(m, args) || author.id;
+        smalluser = getMentioned(m, argparts);
     }
 
-    if (!smallid) {
-        smallid = author.id;
+    if (!smalluser) {
+        smalluser = m.author;
     }
+
+    var peopledata = await peopledb.load();
+    var userdata = peopledata.people[smalluser.id];
 
     // Lewd Summary
     if (argLength) {
-        var tracker_getLewdSummary = perf.begin("getLewdSummary");
-        perf.count("getLewdSummary");
-        var lewdSummary = getLewdSummary(smallid, guildid, type);
-        tracker_getLewdSummary.end();
+        var lewdSummary = getLewdSummary(userdata, guildid, type);
         return {
             embed: {
                 "color": 0xA260F6,
@@ -417,58 +411,41 @@ async function getStory(m, args, command, type, isNSFW, responseColor) {
         };
     }
 
-    var bigNick;
+    var bigchar;
     if (argInvert) {
-        bigNick = authorNick;
+        bigchar = authorNick;
     }
     else {
-        var tracker_getAllGTSNames = perf.begin("getAllGTSNames");
-        perf.count("getAllGTSNames");
-        var names = await getAllGTSNames(smallid, guildid);
-        tracker_getAllGTSNames.end();
-        bigNick = names.find(n => args.includes(n.toLowerCase()));
+        var names = getAllCharacters(userdata, guildid);
+        bigchar = names.find(n => argparts.includes(n.toLowerCase()));
     }
 
-    var tracker_getSubtype = perf.begin("getSubtype");
-    perf.count("getSubtype");
-    var { subtype, emoji } = getSubtype(args);
-    tracker_getSubtype.end();
+    var subtype = getSubtype(args);
 
-    var tracker_generateLewdMessage = perf.begin("generateLewdMessage");
-    perf.count("generateLewdMessage");
-    var lewdmessage = await generateLewdMessage(smallid, bigNick, guildid, type, subtype);
-    tracker_generateLewdMessage.end();
+    var lewdmessage = generateStoryMessage(userdata, bigchar, guildid, type, subtype.name);
 
     var data = await datadb.load();
-    var usageCount = data.commands[command].users[author.id];
+    var usageCount = data.commands[command].users[m.author.id];
     var usageStr = ordinal(+usageCount);
 
-    tracker_getStory.end();
-    printMetrics();
     return {
         embed: {
             color: responseColor,
-            title: `${emoji} ${subtype}`,
-            description: lewdmessage,
+            title: `${subtype.emoji} ${subtype.name}`,
+            description: smalluser.tag + ", " + lewdmessage,
             timestamp: new Date().toISOString(),
             footer: {
                 text: `${usageStr} response`,
-                icon_url: author.avatarURL
+                icon_url: m.author.avatarURL
             }
         }
     };
 }
 
-function printMetrics() {
-    var metrics = perf.metrics();
-    var avgmetrics = {};
-    for (var m in metrics.perf) {
-        avgmetrics[m] = metrics.perf[m] / (metrics.counters[m] || 1);
-    }
-    var metricsOutput = Object.entries(avgmetrics)
-        .map(([name, value]) => name + ": " + value + "ms")
-        .join("\n");
-    console.debug(metricsOutput);
+function init() {
+    // Load the story pool on init
+    storyPool = lewdsdb.load();
 }
+init();
 
 module.exports = getStory;

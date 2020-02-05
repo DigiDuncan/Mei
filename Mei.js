@@ -607,13 +607,13 @@ bot.on("guildDelete", async function(guild) {
 // Giveaways
 bot.on("messageReactionAdd", async function(m, emoji, userID) {
     try {
-        // Only react to giveaway emoji
-        if (emoji.id !== ids.emojis.giveaway) {
+        // Don't react to Mei
+        if (userID === bot.user.id) {
             return;
         }
 
-        // Don't react to Mei
-        if (userID === bot.user.id) {
+        // Only react to giveaway emoji
+        if (emoji.id !== ids.emojis.giveaway) {
             return;
         }
 
@@ -644,13 +644,13 @@ bot.on("messageReactionAdd", async function(m, emoji, userID) {
 // Giveaways
 bot.on("messageReactionRemove", async function(m, emoji, userID) {
     try {
-        // Only react to giveaway emoji
-        if (emoji.id !== ids.emojis.giveaway) {
+        // Don't react to Mei
+        if (userID === bot.user.id) {
             return;
         }
 
-        // Don't react to Mei
-        if (userID === bot.user.id) {
+        // Only react to giveaway emoji
+        if (emoji.id !== ids.emojis.giveaway) {
             return;
         }
 
@@ -699,6 +699,11 @@ function getLinks(m) {
 // Hoard adds
 bot.on("messageReactionAdd", async function(m, emoji, userID) {
     try {
+        // Don't react to Mei
+        if (userID === bot.user.id) {
+            return;
+        }
+
         // Load the guild data
         var guildsdata = await serversdb.load();
         var guildData = guildsdata[m.guild.id];
@@ -803,6 +808,11 @@ bot.on("messageReactionAdd", async function(m, emoji, userID) {
 // Hoard adds
 bot.on("messageReactionRemove", async function(m, emoji, userID) {
     try {
+        // Don't react to Mei
+        if (userID === bot.user.id) {
+            return;
+        }
+
         // Load guild data
         var guildsdata = await serversdb.load();
         var guildData = guildsdata[m.guild.id];
